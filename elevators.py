@@ -10,11 +10,14 @@ class Building(object):
         for _ in range(num_floors):
             self.add_floor()
 
-        for _ in range(num_elevators):
-            self.add_elevator()
+        for i in range(num_elevators):
+            self.add_elevator(i)
+
+        self.add_elevator(2, current_floor=2)
+
 
     def get_num_floors(self):
-        return len(self.floors);
+        return len(self.floors)
 
     def add_floor(self):
         self.floors.append(Floor())
@@ -26,8 +29,8 @@ class Building(object):
         for elevator in self.elevators:
             elevator.add_floor_button()
 
-    def add_elevator(self):
-        self.elevators.append(Elevator(self.get_num_floors()))
+    def add_elevator(self, id, current_floor=1):
+        self.elevators.append(Elevator(id, self.get_num_floors(), current_floor=current_floor))
 
 
 class Floor(object):
@@ -43,11 +46,11 @@ class Floor(object):
     def num_passengers_going_down(self):
         return self._num_passengers_going_down
 
-    def add_passengers_up(self, num):
-        self._num_passengers_going_up += num
-
-    def add_passengers_down(self, num):
-        self._num_passengers_going_down += num
+    def add_passengers(self, num, going_up=True):
+        if going_up:
+            self._num_passengers_going_up += num
+        else:
+            self._num_passengers_going_down += num
 
     def total_passengers(self):
         return self.num_passengers_going_up + self.num_passengers_going_down
@@ -55,11 +58,13 @@ class Floor(object):
 class Elevator(object):
     ELEVATOR_CAPACITY = 10
 
-    def __init__(self, num_floors):
-        self.current_floor = 1
+    def __init__(self, id, num_floors, current_floor=1):
+        self.id = id
+        self.current_floor = current_floor
         self.capacity = Elevator.ELEVATOR_CAPACITY
-        self.dest_queue = collections.deque
+        self.dest_queue = collections.deque()
         self.num_passengers_to_floor = []
+        self.next_dest = None
 
         for _ in range(num_floors):
             self.add_floor_button()
@@ -76,8 +81,54 @@ class Elevator(object):
     def is_on_floor(self, floor_num):
         return self.current_floor == floor_num
 
+    def cost_from_floor(self, floor_num):
+        if floor_num - self.current_floor > 0:
+            direction_needed = 1
+        elif floor_num - self.current_floor < 0:
+            direction_needed = -1
+        else:
+            direction_needed = 0
 
-class View(object):
+        if not self.next_dest:
+            current_direction_of_movement = 0
+        elif self.next_dest < self.current_floor:
+            current_direction_of_movement = -1
+        else:
+            current_direction_of_movement = 1
+
+        if current_direction_of_movement == 0 or direction_needed == current_direction_of_movement:
+            cost = abs(floor_num - self.current_floor)
+        else:
+            cost = abs(floor_num - self.current_floor) + 2 * abs(self.next_dest - self.current_floor)
+
+        return cost
+
+    def add_dest(self, floor_num):
+        self.dest_queue.append(floor_num)
+
+
+    def offload_passengers(self):
+        pass
+
+    def pick_up_passengers(self):
+        pass
+
+    def run_next(self):
+        print("RUNNING ELEVATOR NUM {}".format(self.id))
+        if not self.next_dest:
+            if self.dest_queue:
+                self.next_dest = self.dest_queue.popleft()
+
+        if self.next_dest:
+            if self.next_dest > self.current_floor:
+                self.current_floor += 1
+            elif self.next_dest < self.current_floor:
+                self.current_floor -= 1
+            else:
+                self.offload_passengers()
+                self.pick_up_passengers()
+
+class Controller(object):
     def __init__(self, building):
         self.building = building
         self.ELEVATOR_HEIGHT = 4
@@ -134,45 +185,59 @@ class View(object):
             elevator_indices = [elevator_i for elevator_i, elevator in enumerate(self.building.elevators) if elevator.is_on_floor(floor_num)]
             self.render_floor(floor, elevator_indices, floor_num)
 
-    def ask_for_input(self):
+
+    def add_new_passengers(self):
+        floor_num = int(raw_input("Which floor? ({} - {}) ".format(1, self.building.get_num_floors())))
+        num_passengers = int(raw_input("How many passengers? (1 - 9) "))
+        direction = raw_input("Are they going going up or down? (u or d) ")
+
+        if direction == 'u':
+            self.building.floors[floor_num - 1].add_passengers(num_passengers, going_up=True)
+        else:
+            self.building.floors[floor_num - 1].add_passengers(num_passengers, going_up=False)
+
+        self.render()
+        self.assign_elevator_to_passengers(floor_num)
+
+    def run_elevators(self):
+        print("RUNNING ELEVATORS")
+        for elevator in self.building.elevators:
+            elevator.run_next()
+
+    def process_new_passengers(self):
         # Get num of passengers on each floor
-        for index, floor in enumerate(self.building.floors):
-            print("\n")
-            if index != len(self.building.floors) - 1:
-                new_num_going_up = int(input("Floor {}: There are {} passengers going UP here. How many new passengers going up? ".format(index + 1, floor.num_passengers_going_up)))
-                floor.add_passengers_up(new_num_going_up)
-                self.render()
-                print("Great, there are now {} passengers waiting to go up on floor {}".format(floor.num_passengers_going_up, index + 1))
+        count = 1
+        while True:
+            choice = raw_input("Round {}. Would you like to add prospective passengers to a specific floor? (y or n) ".format(count))
 
-            if index > 0:
-                new_num_going_down = int(input("Floor {}: There are {} passengers going DOWN here. How many new passengers going down? ".format(index + 1, floor.num_passengers_going_down)))
-                floor.add_passengers_down(new_num_going_down)
-                self.render()
-                print("Great, there are now {} passengers waiting to go down on floor {}".format(floor.num_passengers_going_down, index + 1))
+            if choice == 'y':
+                self.add_new_passengers()
 
-        # occupied_elevators = [elevator for elevator in self.building.elevators if elevator.get_num_passengers_total > 0]
-        # # For any elevators that have passengers in them, have those passengers press buttons
-        # for index, elevator in enumerate(self.building.elevators):
-        #     if elevator.get_num_passengers_total() > 0:
-        #         int(input("Elevator {}: There are {} passengers here.".format(index + 1, elevator.get_num_passengers_total()))
+            self.run_elevators()
+            self.render()
+            count += 1
+
+    def assign_elevator_to_passengers(self, floor_num):
+        # Find elevator of lowest cost
+        cheapest_elevator = min(self.building.elevators, key=lambda e: e.cost_from_floor(floor_num))
+        print("CHEAPEST: {}".format(cheapest_elevator.id))
+        cheapest_elevator.add_dest(floor_num)
 
 
 def main():
-    # num_floors = int(input("Hello! How many floors would you like in your building? (2 - 10): "))
-    # num_elevators = int(input("Hello! How many elevators would you like in your building? (2 - 4): "))
+    # num_floors = int(raw_input("Hello! How many floors would you like in your building? (2 - 10): "))
+    # num_elevators = int(raw_input("Hello! How many elevators would you like in your building? (2 - 4): "))
     # building = Building(num_floors=num_floors, num_elevators=num_elevators)
 
     building = Building()
-    view = View(building)
+    controller = Controller(building)
 
     # print "Great, we are going to have {} floors and {} elevators in this building".format(num_floors, num_floors)
 
-    view.render()
+    controller.render()
 
     while True:
-        view.ask_for_input()
-        view.render()
-
+        controller.process_new_passengers()
 
 if __name__ == "__main__":
     main()
