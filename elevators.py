@@ -1,132 +1,5 @@
 from __future__ import print_function
-import collections
-import uuid
-
-class Building(object):
-    def __init__(self, num_floors=4, num_elevators=2):
-        self.floors = []
-        self.elevators = []
-
-        for _ in range(num_floors):
-            self.add_floor()
-
-        for i in range(num_elevators):
-            self.add_elevator(i)
-
-        self.add_elevator(2, current_floor=2)
-
-
-    def get_num_floors(self):
-        return len(self.floors)
-
-    def add_floor(self):
-        self.floors.append(Floor())
-        for elevator in self.elevators:
-            elevator.add_floor_button()
-
-    def remove_floor(self):
-        self.floors.pop()
-        for elevator in self.elevators:
-            elevator.add_floor_button()
-
-    def add_elevator(self, id, current_floor=1):
-        self.elevators.append(Elevator(id, self.get_num_floors(), current_floor=current_floor))
-
-
-class Floor(object):
-    def __init__(self):
-        self._num_passengers_going_up = 0
-        self._num_passengers_going_down = 0
-
-    @property
-    def num_passengers_going_up(self):
-        return self._num_passengers_going_up
-
-    @property
-    def num_passengers_going_down(self):
-        return self._num_passengers_going_down
-
-    def add_passengers(self, num, going_up=True):
-        if going_up:
-            self._num_passengers_going_up += num
-        else:
-            self._num_passengers_going_down += num
-
-    def total_passengers(self):
-        return self.num_passengers_going_up + self.num_passengers_going_down
-
-class Elevator(object):
-    ELEVATOR_CAPACITY = 10
-
-    def __init__(self, id, num_floors, current_floor=1):
-        self.id = id
-        self.current_floor = current_floor
-        self.capacity = Elevator.ELEVATOR_CAPACITY
-        self.dest_queue = collections.deque()
-        self.num_passengers_to_floor = []
-        self.next_dest = None
-
-        for _ in range(num_floors):
-            self.add_floor_button()
-
-    def get_num_passengers_total(self):
-        sum(self.num_passengers_to_floor)
-
-    def add_floor_button(self):
-        self.num_passengers_to_floor.append(0)
-
-    def remove_floor_button(self):
-        self.num_passengers_to_floor.pop()
-
-    def is_on_floor(self, floor_num):
-        return self.current_floor == floor_num
-
-    def cost_from_floor(self, floor_num):
-        if floor_num - self.current_floor > 0:
-            direction_needed = 1
-        elif floor_num - self.current_floor < 0:
-            direction_needed = -1
-        else:
-            direction_needed = 0
-
-        if not self.next_dest:
-            current_direction_of_movement = 0
-        elif self.next_dest < self.current_floor:
-            current_direction_of_movement = -1
-        else:
-            current_direction_of_movement = 1
-
-        if current_direction_of_movement == 0 or direction_needed == current_direction_of_movement:
-            cost = abs(floor_num - self.current_floor)
-        else:
-            cost = abs(floor_num - self.current_floor) + 2 * abs(self.next_dest - self.current_floor)
-
-        return cost
-
-    def add_dest(self, floor_num):
-        self.dest_queue.append(floor_num)
-
-
-    def offload_passengers(self):
-        pass
-
-    def pick_up_passengers(self):
-        pass
-
-    def run_next(self):
-        print("RUNNING ELEVATOR NUM {}".format(self.id))
-        if not self.next_dest:
-            if self.dest_queue:
-                self.next_dest = self.dest_queue.popleft()
-
-        if self.next_dest:
-            if self.next_dest > self.current_floor:
-                self.current_floor += 1
-            elif self.next_dest < self.current_floor:
-                self.current_floor -= 1
-            else:
-                self.offload_passengers()
-                self.pick_up_passengers()
+from classes import Building, Floor, Elevator
 
 class Controller(object):
     def __init__(self, building):
@@ -186,8 +59,7 @@ class Controller(object):
             self.render_floor(floor, elevator_indices, floor_num)
 
 
-    def add_new_passengers(self):
-        floor_num = int(raw_input("Which floor? ({} - {}) ".format(1, self.building.get_num_floors())))
+    def add_new_passengers(self, floor_num):
         num_passengers = int(raw_input("How many passengers? (1 - 9) "))
         direction = raw_input("Are they going going up or down? (u or d) ")
 
@@ -200,18 +72,28 @@ class Controller(object):
         self.assign_elevator_to_passengers(floor_num)
 
     def run_elevators(self):
-        print("RUNNING ELEVATORS")
         for elevator in self.building.elevators:
-            elevator.run_next()
+            elevator.move_to_next_floor()
+            if elevator.on_a_dest_floor():
+                elevator.open_doors()
+                floor_obj = self.building.get_floor_obj_from_num(elevator.current_floor)
+                if (floor_obj.get_total_passengers() > 0):
+                    dest_floor = int(raw_input(
+                        "Elevator {} has reached floor {}. Picking up {} passengers. To what floor would these passengers like to go?".format(
+                            elevator.id, elevator.current_floor, floor_obj.get_total_passengers()
+                        )))
+                    elevator.load(floor_obj.get_total_passengers, dest_floor)
+                    floor_obj.clear_floor()
+
+            print("Elevator {} with next_dest {}, queue {}".format(elevator.id, elevator.next_dest, elevator.dest_queue))
 
     def process_new_passengers(self):
         # Get num of passengers on each floor
         count = 1
         while True:
-            choice = raw_input("Round {}. Would you like to add prospective passengers to a specific floor? (y or n) ".format(count))
-
-            if choice == 'y':
-                self.add_new_passengers()
+            floor_num = int(raw_input("Round {}. To which floor would you like to add new passengers? (0 to skip) ".format(count)))
+            if floor_num > 0:
+                self.add_new_passengers(floor_num)
 
             self.run_elevators()
             self.render()
@@ -223,6 +105,8 @@ class Controller(object):
         print("CHEAPEST: {}".format(cheapest_elevator.id))
         cheapest_elevator.add_dest(floor_num)
 
+    def ask_for_passenger_dest(self, elevator_id, current_floor, num_passengers):
+        return
 
 def main():
     # num_floors = int(raw_input("Hello! How many floors would you like in your building? (2 - 10): "))
