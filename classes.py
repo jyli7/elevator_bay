@@ -55,11 +55,11 @@ class Elevator(object):
 
     def __init__(self, building, id, num_floors, current_floor=1):
         self.id = id
+        self.name = self.id + 1
         self.current_floor = current_floor
         self.capacity = Elevator.ELEVATOR_CAPACITY
-        self.dest_queue = collections.deque()
+        self.dest_queue = []
         self.num_passengers_to_floor = []
-        self.next_dest = None
         self.building = building
 
         for _ in range(num_floors):
@@ -77,75 +77,53 @@ class Elevator(object):
     def add_passengers_traveling_to(self, floor_num, num_passengers):
         self.num_passengers_to_floor[floor_num - 1] = num_passengers
 
-    def remove_passengers_traveling_to(self, floor_num):
-        self.num_passengers_to_floor[floor_num - 1] = 0
-
     def remove_floor_button(self):
         self.num_passengers_to_floor.pop()
 
     def is_on_floor(self, floor_num):
         return self.current_floor == floor_num
 
-    def cost_from_floor(self, floor_num):
-        # What direction would the elevator need to go, to reach desired floor?
-        if floor_num - self.current_floor > 0:
-            direction_needed = 1
-        elif floor_num - self.current_floor < 0:
-            direction_needed = -1
+    def next_dest(self):
+        if self.dest_queue:
+            return self.dest_queue[0]
         else:
-            direction_needed = 0
+            return None
 
-        # What direction is the elevator currently going in?
-        if not self.next_dest:
-            current_direction_of_movement = 0
-        elif self.next_dest < self.current_floor:
-            current_direction_of_movement = -1
+    def cost_from_floor(self, desired_floor, current_floor, queue):
+        if desired_floor == current_floor:
+            return 0
+
+        if queue:
+            if desired_floor > current_floor and queue[0] >= desired_floor:
+                return abs(desired_floor - current_floor)
+            elif desired_floor < current_floor and queue[0] <= desired_floor:
+                return abs(desired_floor - current_floor)
+            else:
+                return abs(queue[0] - current_floor) + self.cost_from_floor(desired_floor, queue[0], queue[1:])
         else:
-            current_direction_of_movement = 1
-
-        if current_direction_of_movement == 0 or direction_needed == current_direction_of_movement:
-            cost = abs(floor_num - self.current_floor)
-        else:
-            cost = abs(floor_num - self.current_floor) + 2 * abs(self.next_dest - self.current_floor)
-
-        return cost
+            return abs(desired_floor - current_floor)
 
     def add_dest(self, floor_num):
         self.dest_queue.append(floor_num)
 
+    def process_dest_floor(self):
+        self.unload()
+        self.dest_queue.pop(0)
+
     def unload(self):
-        self.remove_passengers_traveling_to(self.current_floor)
+        self.num_passengers_to_floor[self.current_floor - 1] = 0
 
     def load(self, num_passengers, dest_floor):
-            self.dest_queue.append(dest_floor)
-            self.add_passengers_traveling_to(dest_floor, num_passengers)
+        self.dest_queue.append(dest_floor)
+        self.add_passengers_traveling_to(dest_floor, num_passengers)
 
-    def on_a_dest_floor(self):
-        return self.current_floor == self.next_dest or self.current_floor in self.dest_queue
-
-    def open_doors(self):
-        self.unload()
-
-        if self.current_floor == self.next_dest:
-            self.next_dest = None
-            if self.dest_queue:
-                self.next_dest = self.dest_queue.popleft()
-
-        elif self.current_floor in self.dest_queue:
-            self.dest_queue.remove(self.current_floor)
+    def is_on_dest_floor(self):
+        return self.current_floor in self.dest_queue
 
     def move_to_next_floor(self):
         '''Returns current floor'''
-        # If we do not have a next_dest, set it
-        if not self.next_dest:
-            if self.dest_queue:
-                self.next_dest = self.dest_queue.popleft()
-
-        if self.next_dest:
-            if self.next_dest > self.current_floor:
+        if self.next_dest():
+            if self.next_dest() > self.current_floor:
                 self.current_floor += 1
-            elif self.next_dest < self.current_floor:
+            elif self.next_dest() < self.current_floor:
                 self.current_floor -= 1
-
-
-
